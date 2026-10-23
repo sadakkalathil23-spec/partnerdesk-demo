@@ -227,6 +227,7 @@
     if (p === '/auth/login') { const u = db.users.find((x) => x.email === String(body.email).toLowerCase()); if (!u || u.password !== body.password) return fail(401, 'Incorrect email or password.'); if (u.status !== 'Active') return fail(403, 'This account is not active.'); tokens.set({ userId: u.id }); return delay({ accessToken: 'mock', refreshToken: 'mock', user: pub(u) }); }
     if (p === '/auth/logout') { tokens.clear(); return delay({}); }
     if (p === '/auth/forgot-password' || p === '/auth/reset-password-otp' || p === '/auth/change-password') return delay({ ok: true });
+    if (p.startsWith('/public/') && window.MOCK_PUBLIC) { const r = await window.MOCK_PUBLIC({ method, p, q, body, db, delay, fail, save, log, uid, iso }); if (r !== undefined) return r; }
     const u = me(); if (!u) return fail(401, 'Not signed in');
     if (p === '/auth/me') return delay(pub(u));
     if (window.MOCK_EXT) { const r = await window.MOCK_EXT({ method, p, q, body, db, u, delay, fail, save, log, uid, keyOf, nameOf, iso }); if (r !== undefined) return r; }

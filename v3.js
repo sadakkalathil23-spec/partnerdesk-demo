@@ -13,7 +13,7 @@
 
   // ---- command palette ----
   const groupOf = (a) => { let p = a.previousElementSibling; while (p && p.tagName !== 'H4') p = p.previousElementSibling; return p ? p.textContent : ''; };
-  const pages = () => [...document.querySelectorAll('.side a[data-p]')].map((a) => ({ title: a.textContent, sub: groupOf(a), href: a.getAttribute('href') }));
+  const pages = () => W.nav();
   const actions = () => [
     { title: 'Add a new lead', sub: 'Action', run: quickAdd },
     { title: 'Switch light / dark mode', sub: 'Action', run: toggleTheme },
@@ -112,7 +112,7 @@
 
   // ---- header buttons ----
   function mountButtons() {
-    const out = document.getElementById('signout'); if (!out || document.getElementById('theme')) return;
+    const out = document.getElementById('bell'); if (!out || document.getElementById('theme')) return;
     out.insertAdjacentHTML('beforebegin', (W.can('LEAD_CREATE') && !W.user().partner ? '<button class="btn primary" id="qadd" title="Add a lead (press n)">+ Lead</button>' : '') + '<button class="btn" id="cmdk" title="Command palette (Ctrl+K)">Jump <span class="kbd">Ctrl K</span></button><button class="btn" id="theme"></button>');
     document.getElementById('theme').onclick = toggleTheme; document.getElementById('cmdk').onclick = palette; const qa = document.getElementById('qadd'); if (qa) qa.onclick = quickAdd; applyTheme();
   }
