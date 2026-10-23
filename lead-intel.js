@@ -1,6 +1,7 @@
 // Lead intelligence: a 0-100 "call first" score and a stuck-in-stage flag. Pure functions, no network.
 window.LeadIntel = (() => {
-  const STAGE = { new: 5, contacted: 8, qualified: 12, initial_discussion: 14, proposal_sent: 18, negotiation: 20 };
+  // Open stages and how much each adds to the score. Not Interested, Invalid Number, Won and Lost are closed.
+  const STAGE = { new: 5, rnr: 5, have_requirement_in_future: 4, callback: 8, contacted: 8, interested: 10, qualified: 12, initial_discussion: 14, proposal_sent: 18, negotiation: 20 };
   const PRI = { high: 30, medium: 18, low: 6 };
   const DAY = 86400000;
   const open = (l) => l.statusKey in STAGE && !l.deleted;
@@ -40,5 +41,5 @@ window.LeadIntel = (() => {
     });
     return out;
   }
-  return { score, stuck, pill, stuckTag, integrity, norm };
+  return { score, stuck, pill, stuckTag, integrity, norm, isOpen: open };
 })();

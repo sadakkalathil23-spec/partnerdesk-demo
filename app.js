@@ -45,13 +45,13 @@ const WorkOS = (() => {
   const LEADV = ['LEAD_VIEW_OWN', 'LEAD_VIEW_TEAM', 'LEAD_VIEW_ALL'], OPSV = ['OPS_VIEW_OWN', 'OPS_VIEW_ALL'], ATT = ['ATTENDANCE_VIEW_TEAM', 'ATTENDANCE_VIEW_ALL'];
   // Each section is one link in the menu; its tabs are the sub-pages shown above the page.
   const NAV = [
-    { label: 'Home', items: [['/home', 'This week'], ['/my-day', 'My Day', LEADV], ['/operations/my-work', 'My Work', OPSV], ['/dashboard', 'Dashboard'], ['/notifications', 'Notifications']] },
+    { label: 'Home', items: [['/home', 'This week'], ['/my-day', 'My Day', LEADV], ['/operations/my-work', 'My Work', OPSV], ['/dashboard', 'Dashboard'], ['/report-builder', 'Report builder', ['LEAD_VIEW_OWN', 'LEAD_VIEW_TEAM', 'LEAD_VIEW_ALL', 'OPS_VIEW_OWN', 'OPS_VIEW_ALL', 'PRESALES_VIEW']], ['/notifications', 'Notifications']] },
     { label: 'Attendance', items: [['/attendance', 'Today', ['ATTENDANCE_SELF']], ['/attendance/history', 'My history', ['ATTENDANCE_SELF']], ['/attendance/team', 'Team', ATT], ['/attendance/exceptions', 'Exceptions', ATT], ['/attendance/reports', 'Reports', ATT], ['/attendance/policy', 'Policy', ['ATTENDANCE_VIEW_ALL']]] },
     { label: 'Sales', items: [['/leads', 'Leads', LEADV], ['/leads?view=board', 'Pipeline', LEADV], ['/sales-overview', 'Overview', ['SALES_TARGET_VIEW']], ['/unassigned', 'Unassigned', ['LEAD_ASSIGN']], ['/customers', 'Customers', ['PRESALES_VIEW', 'LEAD_VIEW_ALL']], ['/proposals', 'Proposals', ['PRESALES_VIEW', 'LEAD_VIEW_ALL']]] },
     { label: 'Work', items: [['/operations', 'Overview', OPSV], ['/operations/current', 'Current sprint', OPSV], ['/operations/projects', 'Projects', ['OPS_VIEW_ALL']], ['/operations/tasks', 'Tasks', OPSV], ['/operations/general', 'Other work', OPSV], ['/operations/sprints', 'Sprints', OPSV], ['/operations/cycles', 'Cycles', OPSV], ['/operations/team', 'Team', ['OPS_VIEW_ALL']], ['/operations/reports', 'Reports', ['OPS_REPORT_VIEW']], ['/support/contracts', 'Support', ['SUPPORT_VIEW']], ['/support/tickets', 'Tickets', ['SUPPORT_VIEW']]] },
     { label: 'Partners', items: [['/partners', 'Partners', ['PARTNER_VIEW']], ['/conflicts', 'Conflicts', ['PARTNER_CONFLICT_DECIDE']], ['/statement', 'Statements', ['PARTNER_VIEW', 'INCENTIVE_APPROVE']], ['/integrity', 'Integrity checks', ['PARTNER_VIEW']]] },
     { label: 'Money', items: [['/finance/collections', 'Collections', ['PAYMENT_RECORD']], ['/approvals', 'Approvals', ['INCENTIVE_APPROVE']], ['/simulator', 'Simulator', ['INCENTIVE_SIMULATE']], ['/admin/rules', 'Payout rules', ['INCENTIVE_RULE_MANAGE']], ['/admin/what-if', 'Rule what-if', ['INCENTIVE_RULE_MANAGE']]] },
-    { label: 'Admin', items: [['/admin/users', 'Users', ['USER_MANAGE']], ['/admin/org', 'Organisation', ['SETTINGS_MANAGE']], ['/admin/roles', 'Roles', ['ROLE_MANAGE']], ['/admin/services', 'Services', ['SERVICE_MANAGE']], ['/admin/settings', 'Settings', ['SETTINGS_MANAGE']], ['/admin/audit', 'Audit trail', ['AUDIT_VIEW']]] }
+    { label: 'Admin', items: [['/admin/users', 'Users', ['USER_MANAGE']], ['/admin/org', 'Organisation', ['SETTINGS_MANAGE']], ['/admin/roles', 'Roles', ['ROLE_MANAGE']], ['/admin/services', 'Services', ['SERVICE_MANAGE']], ['/admin/lead-statuses', 'Lead statuses', ['SETTINGS_MANAGE']], ['/admin/settings', 'Settings', ['SETTINGS_MANAGE']], ['/admin/audit', 'Audit trail', ['AUDIT_VIEW']]] }
   ];
   const PARTNER_NAV = [{ label: 'Partner', items: [['/partner', 'Overview']] }, { label: 'My leads', icon: 'Partner', items: [['/partner/leads', 'My leads']] }, { label: 'Submit a lead', icon: 'Partner', items: [['/partner/submit', 'Submit a lead']] }, { label: 'Payout statement', icon: 'Money', items: [['/partner/statement', 'Payout statement']] }];
   // Detail pages that live under a tab.
@@ -148,8 +148,9 @@ const WorkOS = (() => {
     if (path === '/sign' && routes['/sign']) { document.title = 'Proposal - ' + B.name; return Promise.resolve(routes['/sign'].render(app, Object.fromEntries(new URLSearchParams(qs || '')))).catch((er) => { app.innerHTML = '<div class="empty">' + esc(er.message || 'Could not load this page') + '</div>'; }); }
     if (!user) { location.hash = '#/login'; return; }
     if (path === '/change-password') return changePw();
-    if (user.partner && !path.startsWith('/partner')) { location.hash = '#/partner'; return; }
-    if (!user.partner && path.startsWith('/partner')) { location.hash = '#' + (user.home || '/home'); return; }
+    const portal = path === '/partner' || path.startsWith('/partner/');
+    if (user.partner && !portal) { location.hash = '#/partner'; return; }
+    if (!user.partner && portal) { location.hash = '#' + (user.home || '/home'); return; }
     if (!document.getElementById('page')) shell();
     const shellEl = document.querySelector('.shell'); if (shellEl) shellEl.classList.remove('open');
     const r = routes[path]; const el = document.getElementById('page'); curPath = path;

@@ -3,14 +3,15 @@
 // Nothing here ever calls any third-party API. The mock also plays the part of the server rules.
 (function () {
   const CFG = window.WORKOS_CONFIG || {};
-  const KEY = 'partnerdesk.mock.v3', TOK = 'partnerdesk.tokens';
+  const KEY = 'partnerdesk.mock.v4', TOK = 'partnerdesk.tokens';
   const day = 86400000, now = Date.now();
   const iso = (d) => new Date(now + d * day).toISOString();
   const ALL = ['ATTENDANCE_SELF','ATTENDANCE_VIEW_ALL','ATTENDANCE_VIEW_TEAM','AUDIT_VIEW','CONVERSION_VIEW','CONVERSION_CREATE','INCENTIVE_APPROVE','INCENTIVE_RULE_DELETE','INCENTIVE_RULE_MANAGE','INCENTIVE_SIMULATE','LEAD_ASSIGN','LEAD_CREATE','LEAD_DELETE','LEAD_EDIT','LEAD_EXPORT','LEAD_VIEW_ALL','LEAD_VIEW_OWN','LEAD_VIEW_TEAM','OPS_REPORT_VIEW','OPS_VIEW_ALL','OPS_VIEW_OWN','PARTNER_CONFLICT_DECIDE','PARTNER_CREATE','PARTNER_DELETE','PARTNER_VIEW','PAYMENT_RECORD','PRESALES_VIEW','ROLE_MANAGE','SALES_TARGET_VIEW','SERVICE_MANAGE','SETTINGS_MANAGE','SUPPORT_VIEW','USER_MANAGE'];
   const REP = ['SALES_TARGET_VIEW','ATTENDANCE_SELF','LEAD_VIEW_OWN','LEAD_CREATE','LEAD_EDIT','OPS_VIEW_OWN','PRESALES_VIEW'];
   // Pipeline. Stages that need a follow-up date + comment cannot be dragged into; Won only via conversion.
-  const STATUSES = [['new','New'],['contacted','Contacted'],['qualified','Qualified'],['initial_discussion','Initial Discussion'],['proposal_sent','Proposal Sent'],['negotiation','Negotiation'],['won','Won'],['lost','Lost']].map((s) => ({ id: s[0], key: s[0], name: s[1], isActive: true }));
-  const FOLLOWUP_REQUIRED = ['proposal_sent', 'negotiation'];
+  // key, name, step in the 6-step sales journey, built in (1) or added by an admin (0). Admins can edit this list (api-ext7.js).
+  const STATUSES = [['new', 'New', 1, 1], ['interested', 'Interested', 2, 0], ['not_interested', 'Not Interested', 2, 0], ['callback', 'Callback', 2, 0], ['rnr', 'RNR', 2, 0], ['invalid_number', 'Invalid Number', 2, 0], ['have_requirement_in_future', 'Have a Requirement in future', 2, 0], ['contacted', 'Contacted', 2, 1], ['qualified', 'Qualified', 3, 1], ['initial_discussion', 'Initial Discussion', 3, 1], ['proposal_sent', 'Proposal Sent', 4, 1], ['negotiation', 'Negotiation', 5, 1], ['won', 'Won', 6, 1], ['lost', 'Lost', 6, 1]].map((s) => ({ id: s[0], key: s[0], name: s[1], isActive: true, step: s[2], system: !!s[3] }));
+  const FOLLOWUP_REQUIRED = ['proposal_sent', 'negotiation', 'callback'];
   const keyOf = (name) => (STATUSES.find((s) => s.name === name) || {}).key;
   const nameOf = (k) => (STATUSES.find((s) => s.key === k) || {}).name;
   const LOSS = ['Price', 'Chose a competitor', 'No response', 'Not a fit', 'Timing', 'Other'].map((n, i) => ({ id: 'lr' + i, name: n }));
@@ -39,7 +40,12 @@
       ['LD-1005','Delta Logistics','Nikhil R','medium','Direct','u3','Negotiation',1250000,-1,['calls_pending','followups_pending'],'B2C'],
       ['LD-1006','Greenfield Farms','Leena J','low','Partner','u2','Won',600000,-9,['won','meetings_done'],'B2B'],
       ['LD-1007','Crown Hotels','Arun V','high','Direct','u3','Initial Discussion',780000,2,['messages_done'],'B2C'],
-      ['LD-1008','Lotus Clinics','Fathima A','low','Direct','','New',210000,4,['untouched'],'B2C']
+      ['LD-1008','Lotus Clinics','Fathima A','low','Direct','','New',210000,4,['untouched'],'B2C'],
+      ['LD-1009','Harbor Foods','Imran K','medium','Direct','u2','Interested',180000,2,['calls_done'],'B2C'],
+      ['LD-1010','Maple Dental','Rina D','low','Direct','u3','Callback',90000,1,['calls_pending'],'B2C'],
+      ['LD-1011','Sparrow Logistics','Joel M','low','Direct','u2','Not Interested',0,0,['calls_done'],'B2C'],
+      ['LD-1012','Quartz Interiors','Neha B','medium','Direct','u3','RNR',120000,1,['calls_pending'],'B2C'],
+      ['LD-1013','Willow Schools','Anil G','medium','Direct','u2','Have a Requirement in future',350000,30,['calls_done'],'B2C']
     ].map((r, i) => ({ id: 'l' + (i + 1), number: r[0], company: r[1], contact: r[2], email: r[2].split(' ')[0].toLowerCase() + '@' + r[1].split(' ')[0].toLowerCase() + '.example', priority: r[3], source: r[4], assignedTo: r[5], status: r[6], estimatedValue: r[7], currency: 'INR', nextAction: iso(r[8]), flags: r[9], leadType: r[10], service: ['Website','CRM setup','Analytics'][i % 3], serviceId: ['s1','s2','s3'][i % 3], partnerId: r[4] === 'Partner' ? 'p' + ((i % 3) + 1) : '', createdAt: iso(-i * 3), updatedAt: iso(-i * 2), notes: i === 1 ? [{ text: 'Asked for a revised quote', internal: false, at: iso(-1), author: 'Ravi Nair' }] : [], hasNewNote: i === 1, deleted: false, convertedAt: r[6] === 'Won' ? iso(-9) : null, activities: [{ id: 'a' + i, description: 'Lead created', at: iso(-i * 3) }] })),
     customers: [
       { id: 'c1', code: 'CUS-001', company: 'Greenfield Farms', contact: 'Leena J', owner: 'u2' },
@@ -190,8 +196,7 @@
     let d = b.draft || {}; if (!['percentage', 'fixed'].includes(d.calculationType)) return fail(400, 'Choose percentage or fixed amount for the draft rule.');
     if (d.calculationType === 'percentage' && (d.percentage === '' || d.percentage == null || !(Number(d.percentage) >= 0))) return fail(400, 'Enter the draft percentage.');
     if (d.calculationType === 'fixed' && (d.fixedAmount === '' || d.fixedAmount == null || !(Number(d.fixedAmount) >= 0))) return fail(400, 'Enter the draft fixed amount.');
-    const open = ['New', 'Contacted', 'Qualified', 'Initial Discussion', 'Proposal Sent', 'Negotiation'];
-    const deals = db.leads.filter((l) => !l.deleted && l.partnerId && l.serviceId && (l.status === 'Won' || (b.includeOpen && open.includes(l.status))));
+    const deals = db.leads.filter((l) => !l.deleted && l.partnerId && l.serviceId && (l.status === 'Won' || (b.includeOpen && l.status !== 'Lost')));
     const original = db.rules, rows = [];
     const base = original.find((r) => r.id === (b.replaceId || '')) || {};
     const scope = {}; ['partnerId', 'partnerCategoryId', 'partnerTierId', 'serviceId', 'serviceCategoryId', 'handlingType', 'currency', 'effectiveFrom', 'effectiveUntil'].forEach((k) => { if (base[k] !== undefined && base[k] !== '') scope[k] = base[k]; });

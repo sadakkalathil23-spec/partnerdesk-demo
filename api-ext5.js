@@ -5,7 +5,6 @@
   const prev = window.MOCK_EXT, DAY = 86400000;
   const has = (u, ks) => ks.some((k) => u.permissions.includes(k));
   const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const OPEN = ['New', 'Contacted', 'Qualified', 'Initial Discussion', 'Proposal Sent', 'Negotiation'];
   const iso = (d) => new Date(Date.now() + d * DAY).toISOString();
   const norm = (s) => String(s || '').toLowerCase().replace(/&/g, ' and ').replace(/\b(pvt|private|ltd|limited|llp|inc|co|company|corp|corporation)\b\.?/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
   const plain = (x) => JSON.parse(JSON.stringify(x));
@@ -100,7 +99,7 @@
     if (p === '/proposals' && method === 'POST') {
       if (!canSee) return fail(403, 'You cannot write proposals.');
       const lead = db.leads.find((l) => l.id === body.leadId && !l.deleted); if (!lead) return fail(400, 'Choose the lead this proposal is for.');
-      if (!OPEN.includes(lead.status)) return fail(409, 'This lead is already closed.');
+      if (['Won', 'Lost', 'Not Interested', 'Invalid Number'].includes(lead.status)) return fail(409, 'This lead is already closed.');
       if (db.proposals.some((x) => x.lead.id === lead.id && ['draft', 'pending_approval', 'approved', 'sent'].includes(x.status))) return fail(409, 'This lead already has a proposal in progress. Open it and add a new version instead.');
       const c = clean(body, lead); if (c.error) return fail(400, c.error);
       const pr = { id: uid(), proposalNumber: 'PR-' + (1001 + db.proposals.length), currentVersion: 1, status: 'draft', lead: { id: lead.id, companyName: lead.company, leadNumber: lead.number }, versions: [Object.assign({ number: 1, note: '', createdAt: new Date().toISOString(), createdBy: u.id, createdByName: u.name }, c.v)], events: [] };
