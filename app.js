@@ -37,7 +37,7 @@ const WorkOS = (() => {
     { label: 'Attendance', items: [['/attendance', 'Today', ['ATTENDANCE_SELF']], ['/attendance/history', 'History', ['ATTENDANCE_SELF']], ['/attendance/team', 'Team', ['ATTENDANCE_VIEW_TEAM', 'ATTENDANCE_VIEW_ALL']], ['/attendance/exceptions', 'Exceptions', ['ATTENDANCE_VIEW_TEAM', 'ATTENDANCE_VIEW_ALL']], ['/attendance/reports', 'Reports', ['ATTENDANCE_VIEW_TEAM', 'ATTENDANCE_VIEW_ALL']], ['/attendance/policy', 'Policy', ['ATTENDANCE_VIEW_ALL']]] },
     { label: 'Sales', items: [['/leads', 'Leads', ['LEAD_VIEW_OWN', 'LEAD_VIEW_TEAM', 'LEAD_VIEW_ALL']], ['/leads?view=board', 'Pipeline', ['LEAD_VIEW_OWN', 'LEAD_VIEW_TEAM', 'LEAD_VIEW_ALL']], ['/sales-overview', 'Targets', ['SALES_TARGET_VIEW']], ['/unassigned', 'Unassigned', ['LEAD_ASSIGN']], ['/customers', 'Customers', ['PRESALES_VIEW', 'LEAD_VIEW_ALL']], ['/proposals', 'Proposals', ['PRESALES_VIEW', 'LEAD_VIEW_ALL']]] },
     { label: 'Work', items: [['/operations', 'Overview', ['OPS_VIEW_OWN', 'OPS_VIEW_ALL']], ['/operations/projects', 'Projects', ['OPS_VIEW_ALL']], ['/operations/tasks', 'Tasks', ['OPS_VIEW_OWN', 'OPS_VIEW_ALL']], ['/operations/sprints', 'Sprints', ['OPS_VIEW_OWN', 'OPS_VIEW_ALL']], ['/operations/cycles', 'Monthly cycles', ['OPS_VIEW_OWN', 'OPS_VIEW_ALL']], ['/operations/general', 'General work', ['OPS_VIEW_OWN', 'OPS_VIEW_ALL']], ['/operations/team', 'Team workload', ['OPS_VIEW_ALL']], ['/operations/reports', 'Reports', ['OPS_REPORT_VIEW']], ['/support/contracts', 'Contracts', ['SUPPORT_VIEW']], ['/support/tickets', 'Tickets', ['SUPPORT_VIEW']]] },
-    { label: 'Partners', items: [['/partners', 'Partners', ['PARTNER_VIEW']], ['/conflicts', 'Conflicts', ['PARTNER_CONFLICT_DECIDE']]] },
+    { label: 'Partners', items: [['/partners', 'Partners', ['PARTNER_VIEW']], ['/conflicts', 'Conflicts', ['PARTNER_CONFLICT_DECIDE']], ['/integrity', 'Integrity checks', ['PARTNER_VIEW']]] },
     { label: 'Money', items: [['/finance/collections', 'Collections', ['PAYMENT_RECORD']], ['/approvals', 'Approvals', ['INCENTIVE_APPROVE']], ['/simulator', 'Payout simulator', ['INCENTIVE_SIMULATE']]] },
     { label: 'Admin', items: [['/admin/users', 'Users', ['USER_MANAGE']], ['/admin/org', 'Organisation', ['SETTINGS_MANAGE']], ['/admin/roles', 'Roles', ['ROLE_MANAGE']], ['/admin/services', 'Services', ['SERVICE_MANAGE']], ['/admin/rules', 'Payout rules', ['INCENTIVE_RULE_MANAGE']], ['/admin/settings', 'Settings', ['SETTINGS_MANAGE']], ['/admin/audit', 'Audit trail', ['AUDIT_VIEW']]] }
   ];
@@ -108,7 +108,6 @@ const WorkOS = (() => {
   async function start() {
     document.title = B.name;
     try { user = await api.get('/auth/me'); } catch (e) { user = null; }
-    if (!user && B.demo && api.demoLogin && !location.hash.startsWith('#/login')) { try { const r = await api.demoLogin('admin@example.com'); user = r.user; location.hash = '#' + (r.user.home || '/home'); } catch (e) { user = null; } }
     window.addEventListener('hashchange', () => { if (!user || !location.hash.startsWith('#/login')) route(); else route(); });
     if (!user) location.hash = '#/login'; else if (!location.hash) location.hash = '#' + (user.home || '/home');
     route();
