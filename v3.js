@@ -15,6 +15,7 @@
   const groupOf = (a) => { let p = a.previousElementSibling; while (p && p.tagName !== 'H4') p = p.previousElementSibling; return p ? p.textContent : ''; };
   const pages = () => [...document.querySelectorAll('.side a[data-p]')].map((a) => ({ title: a.textContent, sub: groupOf(a), href: a.getAttribute('href') }));
   const actions = () => [
+    { title: 'Add a new lead', sub: 'Action', run: quickAdd },
     { title: 'Switch light / dark mode', sub: 'Action', run: toggleTheme },
     { title: 'Show keyboard shortcuts', sub: 'Action', run: help },
     { title: 'Take the quick tour', sub: 'Action', run: () => tour(0) },
@@ -48,7 +49,7 @@
 
   // ---- shortcuts help ----
   function help() {
-    const rows = [[['Ctrl', 'K'], 'Open the command palette'], [['/'], 'Search leads, customers, partners'], [['g', 'h'], 'Go to Home'], [['g', 'l'], 'Go to Leads'], [['g', 'd'], 'Go to Dashboard'], [['g', 'n'], 'Go to Notifications'], [['?'], 'Show this list'], [['Esc'], 'Close a window']];
+    const rows = [[['Ctrl', 'K'], 'Open the command palette'], [['/'], 'Search leads, customers, partners'], [['g', 'h'], 'Go to Home'], [['g', 'l'], 'Go to Leads'], [['g', 'd'], 'Go to Dashboard'], [['g', 'n'], 'Go to Notifications'], [['n'], 'Add a new lead'], [['?'], 'Show this list'], [['Esc'], 'Close a window']];
     W.modal('Keyboard shortcuts', '<div class="help-grid">' + rows.map((r) => '<span>' + r[0].map((k) => '<span class="kbd">' + k + '</span>').join(' then ') + '</span><span>' + r[1] + '</span>').join('') + '</div>');
   }
   let chord = 0;
@@ -56,15 +57,64 @@
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); palette(); return; }
     if (typing() || e.ctrlKey || e.metaKey || e.altKey || !W.user()) return;
     if (e.key === '?') { e.preventDefault(); help(); return; }
+    if (e.key === 'n' && W.can('LEAD_CREATE') && !W.user().partner && !document.querySelector('.modal-bg')) { e.preventDefault(); quickAdd(); return; }
     if (chord && Date.now() - chord < 1500) { const to = { h: '/home', l: '/leads', d: '/dashboard', n: '/notifications' }[e.key]; chord = 0; if (to) location.hash = '#' + to; return; }
     chord = e.key === 'g' ? Date.now() : 0;
   });
 
+  // ---- undo toast (shared by bulk actions and quick follow-ups) ----
+  W.undoToast = (msg, undo) => {
+    const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status');
+    t.innerHTML = esc(msg) + ' <button class="btn sm" style="margin-left:8px">Undo</button>'; document.body.appendChild(t);
+    const timer = setTimeout(() => t.remove(), 9000);
+    t.querySelector('button').onclick = async () => { clearTimeout(timer); t.remove(); try { await undo(); W.toast('Undone.'); } catch (e) { W.toast(e.message || 'Could not undo.'); } };
+  };
+
+  // ---- one-click follow-up scheduling ----
+  const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const plus = (n) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(10, 0, 0, 0); return d; };
+  const nextMonday = () => { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); d.setHours(10, 0, 0, 0); return d; };
+  function scheduleMenu(anchor, lead, done) {
+    document.querySelectorAll('.fu-pop').forEach((n) => n.remove());
+    const pop = document.createElement('div'); pop.className = 'fu-pop'; pop.setAttribute('role', 'menu');
+    const opts = [['Tomorrow', plus(1)], ['In 3 days', plus(3)], ['Next Monday', nextMonday()], ['In 2 weeks', plus(14)]];
+    pop.innerHTML = '<div class="fu-h">Next follow-up for ' + esc(lead.company) + '</div>' + opts.map((o, i) => '<button class="btn sm" data-i="' + i + '">' + o[0] + '</button>').join('') + '<label class="fu-d">Pick a date <input type="date" class="in" min="' + ymd(new Date()) + '"></label>';
+    document.body.appendChild(pop);
+    const r = anchor.getBoundingClientRect(), h = pop.offsetHeight, below = r.bottom + 4 + h <= window.innerHeight; pop.style.top = (window.scrollY + (below ? r.bottom + 4 : Math.max(8, r.top - h - 4))) + 'px'; pop.style.left = Math.max(8, Math.min(window.scrollX + r.left, window.innerWidth - 240)) + 'px';
+    const close = () => { pop.remove(); document.removeEventListener('click', away, true); };
+    const away = (e) => { if (!pop.contains(e.target) && e.target !== anchor) close(); };
+    setTimeout(() => document.addEventListener('click', away, true), 0);
+    const set = async (when) => {
+      close();
+      try {
+        const res = await api.post('/leads/' + lead.id + '/reschedule', { nextFollowUp: when.toISOString() });
+        W.undoToast(lead.company + ': follow-up set for ' + when.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) + '.', async () => { if (res.was) await api.post('/leads/' + lead.id + '/reschedule', { nextFollowUp: res.was, restore: true }); if (done) await done(); });
+        if (done) await done();
+      } catch (e) { W.toast(e.message || 'Could not set the follow-up.'); }
+    };
+    pop.querySelectorAll('[data-i]').forEach((b) => { b.onclick = () => set(opts[b.dataset.i][1]); });
+    pop.querySelector('input').onchange = (e) => { if (e.target.value) set(new Date(e.target.value + 'T10:00:00')); };
+    pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { close(); anchor.focus(); } });
+    const first = pop.querySelector('button'); if (first) first.focus();
+  }
+  window.PD = Object.assign(window.PD || {}, { scheduleMenu });
+
+  // ---- quick-add lead ----
+  function quickAdd() {
+    const F = W.field, me = W.user();
+    return W.modal('New lead', F('company', 'Company', 'text', { required: true }) + F('contact', 'Contact person', 'text') + F('email', 'Email', 'email') + F('estimatedValue', 'Estimated value', 'number') + F('priority', 'Priority', 'select', { options: [{ value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }], value: 'medium' }) + '<p class="sub">The lead is assigned to you and its first follow-up is set for tomorrow.</p>', async (d) => {
+      d.estimatedValue = Number(d.estimatedValue) || 0; d.assignedTo = me.id;
+      const lead = await api.post('/leads', d);
+      W.undoToast(lead.company + ' added.', async () => { await api.post('/leads/bulk-delete', { leadIds: [lead.id] }); W.rerender(); });
+      W.rerender();
+    }, 'Add lead');
+  }
+
   // ---- header buttons ----
   function mountButtons() {
     const out = document.getElementById('signout'); if (!out || document.getElementById('theme')) return;
-    out.insertAdjacentHTML('beforebegin', '<button class="btn" id="cmdk" title="Command palette (Ctrl+K)">Jump <span class="kbd">Ctrl K</span></button><button class="btn" id="theme"></button>');
-    document.getElementById('theme').onclick = toggleTheme; document.getElementById('cmdk').onclick = palette; applyTheme();
+    out.insertAdjacentHTML('beforebegin', (W.can('LEAD_CREATE') && !W.user().partner ? '<button class="btn primary" id="qadd" title="Add a lead (press n)">+ Lead</button>' : '') + '<button class="btn" id="cmdk" title="Command palette (Ctrl+K)">Jump <span class="kbd">Ctrl K</span></button><button class="btn" id="theme"></button>');
+    document.getElementById('theme').onclick = toggleTheme; document.getElementById('cmdk').onclick = palette; const qa = document.getElementById('qadd'); if (qa) qa.onclick = quickAdd; applyTheme();
   }
 
   // ---- first-visit tour ----

@@ -184,6 +184,33 @@
     const calc = ruleAmount(r, base, deal);
     return delay({ matched: true, currency: cur, winner: { id: r.id, name: r.name, score: win.score, matchedDimensions: win.dims, isServiceDefault: !!win.isDefault, eligibilityCondition: r.eligibilityCondition }, eligibility: { eligible, reason, eligibleBase: base }, tieBreakApplied: tie, tieBreakNote: note, calculation: { effectiveRate: calc.rate, amount: calc.amount, steps: calc.steps }, runnersUp: cands.slice(1).map((c) => ({ id: c.r.id, name: c.r.name, lostBecause: 'Lower specificity (score ' + c.score + ' against ' + win.score + ')' + (c.score === win.score ? ' and an earlier effective date' : '') })), rejected });
   }
+  // ---- what-if: replay deals against a draft payout rule ----
+  // Nothing is saved: the draft is swapped in for the run, then the real rules are put back.
+  async function whatIf(b) {
+    let d = b.draft || {}; if (!['percentage', 'fixed'].includes(d.calculationType)) return fail(400, 'Choose percentage or fixed amount for the draft rule.');
+    if (d.calculationType === 'percentage' && (d.percentage === '' || d.percentage == null || !(Number(d.percentage) >= 0))) return fail(400, 'Enter the draft percentage.');
+    if (d.calculationType === 'fixed' && (d.fixedAmount === '' || d.fixedAmount == null || !(Number(d.fixedAmount) >= 0))) return fail(400, 'Enter the draft fixed amount.');
+    const open = ['New', 'Contacted', 'Qualified', 'Initial Discussion', 'Proposal Sent', 'Negotiation'];
+    const deals = db.leads.filter((l) => !l.deleted && l.partnerId && l.serviceId && (l.status === 'Won' || (b.includeOpen && open.includes(l.status))));
+    const original = db.rules, rows = [];
+    const base = original.find((r) => r.id === (b.replaceId || '')) || {};
+    const scope = {}; ['partnerId', 'partnerCategoryId', 'partnerTierId', 'serviceId', 'serviceCategoryId', 'handlingType', 'currency', 'effectiveFrom', 'effectiveUntil'].forEach((k) => { if (base[k] !== undefined && base[k] !== '') scope[k] = base[k]; });
+    d = Object.assign({}, d); ['partnerId', 'serviceId', 'partnerCategoryId', 'partnerTierId', 'serviceCategoryId'].forEach((k) => { if (d[k] === '' || d[k] == null) delete d[k]; });
+    if (base.id && (d.minDealValue === '' || d.minDealValue == null)) { d = Object.assign({}, d, { minDealValue: base.minDealValue, maxDealValue: base.maxDealValue }); }
+    const draft = Object.assign({ id: 'draft', name: 'Draft rule', description: '', partnerId: '', partnerCategoryId: '', partnerTierId: '', serviceId: '', serviceCategoryId: '', handlingType: '', percentage: '', fixedAmount: '', tiers: [], tierMode: 'flat', minDealValue: '', maxDealValue: '', currency: '', eligibilityCondition: 'on_conversion', eligibilityThresholdPct: '', effectiveFrom: new Date().toISOString().slice(0, 10), effectiveUntil: '', status: 'active' }, scope, d, { id: 'draft', status: 'active', minDealValue: d.minDealValue === '' || d.minDealValue == null ? '' : Number(d.minDealValue), maxDealValue: d.maxDealValue === '' || d.maxDealValue == null ? '' : Number(d.maxDealValue) });
+    const run = async (l) => { try { return await simulate({ partnerId: l.partnerId, serviceId: l.serviceId, dealValue: l.estimatedValue, collected: l.estimatedValue }); } catch (e) { return null; } };
+    try {
+      for (const l of deals) {
+        db.rules = original; const now_ = await run(l);
+        db.rules = original.filter((r) => r.id !== (b.replaceId || '')).concat([draft]); const then_ = await run(l);
+        if (!now_ || !then_) continue;
+        const cur = now_.eligibility.eligible ? now_.calculation.amount : 0, nxt = then_.eligibility.eligible ? then_.calculation.amount : 0;
+        rows.push({ leadId: l.id, number: l.number, company: l.company, partner: (db.partners.find((p) => p.id === l.partnerId) || {}).name || '', dealValue: l.estimatedValue, actual: l.status === 'Won', currentRule: now_.winner.name, draftRule: then_.winner.name, draftApplies: then_.winner.id === 'draft', current: cur, proposed: nxt, change: nxt - cur, currentEligible: now_.eligibility.eligible, proposedEligible: then_.eligibility.eligible });
+      }
+    } finally { db.rules = original; }
+    const sum = (k, f) => rows.filter(f || (() => true)).reduce((a, r) => a + r[k], 0);
+    return delay({ rows, totals: { current: sum('current'), proposed: sum('proposed'), change: sum('change'), affected: rows.filter((r) => r.draftApplies).length, increases: rows.filter((r) => r.change > 0).length, decreases: rows.filter((r) => r.change < 0).length }, note: rows.length ? '' : 'There are no partner deals to replay yet.' });
+  }
   // ---- attendance ----
   const todayStr = () => new Date().toISOString().slice(0, 10);
   const openRec = (u) => db.attendance.find((a) => a.userId === u.id && a.status === 'open');
@@ -205,6 +232,7 @@
     if (window.MOCK_EXT) { const r = await window.MOCK_EXT({ method, p, q, body, db, u, delay, fail, save, log, uid, keyOf, nameOf, iso }); if (r !== undefined) return r; }
     if (p === '/dashboards/me') return delay(dashboard());
     if (p === '/incentive-rules/simulate') return simulate(body);
+    if (p === '/incentive-rules/what-if' && method === 'POST') return whatIf(body);
     if (p === '/incentive-rules' || p.startsWith('/incentive-rules/')) {
       const id = p.slice('/incentive-rules/'.length);
       if (method === 'GET') return delay(db.rules.filter((r) => q.includeArchived === 'true' || r.status !== 'archived'));

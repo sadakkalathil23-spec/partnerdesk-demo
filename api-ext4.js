@@ -17,6 +17,7 @@
     const mine = db.leads.filter((l) => !l.deleted && l.assignedTo === u.id && open(l));
     const od = mine.filter((l) => l.nextAction && new Date(l.nextAction) < new Date(now - 0)).length; if (od) add('overdue:' + od, 'followup', od + (od === 1 ? ' follow-up is' : ' follow-ups are') + ' overdue.', '#/my-day');
     mine.filter((l) => l.hasNewNote).forEach((l) => add('note:' + l.id, 'note', 'New note on ' + l.company + '.', '#/lead?id=' + l.id, (l.notes[l.notes.length - 1] || {}).at));
+    if (u.permissions.includes('INCENTIVE_APPROVE')) { const dn = db.approvals.filter((a) => a.dispute && !a.dispute.resolvedAt).length; if (dn) add('dispute:' + dn, 'money', dn + (dn === 1 ? ' payout is' : ' payouts are') + ' disputed by a partner', '#/statement', new Date().toISOString()); }
     if (u.permissions.includes('INCENTIVE_APPROVE')) { const n = db.approvals.filter((a) => a.status === 'pending_approval' && a.recordedBy !== u.id).length; if (n) add('approve:' + n, 'money', n + (n === 1 ? ' payout needs' : ' payouts need') + ' your approval.', '#/approvals'); }
     if (u.permissions.includes('SUPPORT_VIEW')) { const n = db.tickets.filter((t) => !['resolved', 'closed'].includes(t.status) && new Date(t.slaResolveBy) < new Date()).length; if (n) add('sla:' + n, 'support', n + (n === 1 ? ' ticket is' : ' tickets are') + ' past its deadline.', '#/support/tickets'); }
     if (u.permissions.includes('ATTENDANCE_VIEW_ALL')) { const n = (db.corrections || []).filter((c) => c.status === 'pending').length; if (n) add('corr:' + n, 'attendance', n + (n === 1 ? ' attendance correction is' : ' attendance corrections are') + ' waiting.', '#/attendance/exceptions'); }
@@ -28,6 +29,43 @@
 
   window.MOCK_EXT = async function (ctx) {
     const { method, p, q, body, db, u, delay, fail, save, log, uid } = ctx;
+    // ----- partner payout statement and disputes -----
+    const payRows = (partner) => db.approvals.filter((a) => a.partner === partner.name).map((a) => {
+      const lead = db.leads.find((l) => l.number === a.lead), rule = db.rules.find((r) => r.name === a.rule), value = lead ? Number(lead.estimatedValue) || 0 : 0, n = (x) => Number(x).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+      let how = 'Rule: ' + a.rule + '.';
+      if (rule && value) {
+        if (rule.calculationType === 'percentage') how += ' Deal value ' + n(value) + ' x ' + rule.percentage + '% = ' + n(value * rule.percentage / 100) + '.';
+        else if (rule.calculationType === 'fixed') how += ' Fixed amount of ' + n(rule.fixedAmount) + '.';
+        else how += ' Banded rate on a deal value of ' + n(value) + '.';
+      }
+      return { id: a.id, number: a.incentiveNumber, lead: a.lead, company: lead ? lead.company : '', service: a.service, rule: a.rule, how, amount: a.amount, currency: a.currency, status: a.status, since: a.since, eligible: a.eligible, dispute: a.dispute || null };
+    });
+    if (p === '/statement' && method === 'GET') {
+      const partner = u.partner ? db.partners.find((x) => x.id === u.partner.id) : db.partners.find((x) => x.id === q.partnerId);
+      if (!u.partner && !has(u, ['PARTNER_VIEW', 'INCENTIVE_APPROVE'])) return fail(403, 'You cannot see partner statements.');
+      if (!partner) return fail(404, 'Choose a partner.');
+      const rows = payRows(partner), tot = {}; rows.forEach((r) => { tot[r.currency] = tot[r.currency] || { paid: 0, approved: 0, waiting: 0 }; const k = r.status === 'paid' ? 'paid' : r.status === 'approved_unpaid' ? 'approved' : 'waiting'; tot[r.currency][k] += r.amount; });
+      return delay({ partner: { id: partner.id, name: partner.name, code: partner.code }, generatedAt: new Date().toISOString(), rows, totals: tot });
+    }
+    let dp = p.match(/^\/incentives\/([^/]+)\/dispute(\/resolve)?$/);
+    if (dp && method === 'POST') {
+      const a = db.approvals.find((x) => x.id === dp[1]); if (!a) return fail(404, 'Payout not found');
+      if (dp[2]) { if (!has(u, ['INCENTIVE_APPROVE'])) return fail(403, 'Only an approver can resolve a dispute.'); if (!a.dispute || a.dispute.resolvedAt) return fail(409, 'There is no open dispute.'); if (String(body.note || '').trim().length < 3) return fail(400, 'Say how it was resolved.'); a.dispute.resolvedAt = new Date().toISOString(); a.dispute.resolution = String(body.note).trim(); log('resolved payout dispute', 'incentive', a.id); save(); return delay({ ok: true }); }
+      const mine = u.partner && db.partners.find((x) => x.id === u.partner.id); if (!mine || mine.name !== a.partner) return fail(403, 'You can only dispute your own payouts.');
+      if (a.dispute && !a.dispute.resolvedAt) return fail(409, 'This payout is already disputed.');
+      if (String(body.reason || '').trim().length < 10) return fail(400, 'Explain what looks wrong (10 characters or more).');
+      a.dispute = { reason: String(body.reason).trim(), at: new Date().toISOString() }; log('disputed payout', 'incentive', a.id); save(); return delay({ ok: true });
+    }
+    // ----- one-click follow-up scheduling -----
+    let rs = p.match(/^\/leads\/([^/]+)\/reschedule$/);
+    if (rs && method === 'POST') {
+      const l = myLeads(db, u).find((x) => x.id === rs[1]); if (!l) return fail(404, 'Lead not found');
+      const at = new Date(body.nextFollowUp); if (isNaN(at)) return fail(400, 'Choose a valid date.');
+      if (!body.restore && at < new Date(Date.now() - DAY)) return fail(400, 'Pick today or a later date.');
+      const was = l.nextAction; l.nextAction = at.toISOString(); l.updatedAt = new Date().toISOString();
+      l.activities.unshift({ id: uid(), description: 'Next follow-up set to ' + at.toLocaleDateString(), at: l.updatedAt });
+      log('rescheduled follow-up', 'lead', l.id); save(); return delay({ ok: true, id: l.id, nextAction: l.nextAction, was });
+    }
     // ----- notifications -----
     if (p === '/notifications' && method === 'GET') { db.notifRead = db.notifRead || {}; const read = db.notifRead[u.id] || [], items = notifications(db, u).map((n) => Object.assign(n, { read: read.includes(n.id) })); return delay({ items, unread: items.filter((n) => !n.read).length }); }
     if (p === '/notifications/read' && method === 'POST') { db.notifRead = db.notifRead || {}; const cur = new Set(db.notifRead[u.id] || []); (body.all ? notifications(db, u).map((n) => n.id) : body.ids || []).forEach((id) => cur.add(id)); db.notifRead[u.id] = [...cur].slice(-200); save(); return delay({ ok: true }); }
