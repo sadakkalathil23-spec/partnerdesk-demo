@@ -108,6 +108,7 @@ const WorkOS = (() => {
   async function start() {
     document.title = B.name;
     try { user = await api.get('/auth/me'); } catch (e) { user = null; }
+    if (!user && B.demo && api.demoLogin && !location.hash.startsWith('#/login')) { try { const r = await api.demoLogin('admin@example.com'); user = r.user; location.hash = '#' + (r.user.home || '/home'); } catch (e) { user = null; } }
     window.addEventListener('hashchange', () => { if (!user || !location.hash.startsWith('#/login')) route(); else route(); });
     if (!user) location.hash = '#/login'; else if (!location.hash) location.hash = '#' + (user.home || '/home');
     route();
