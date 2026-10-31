@@ -1,0 +1,1 @@
+{"name":"partnerdesk-private","version":"1.0.0","private":true,"scripts":{"start":"node server.cjs","test":"node --test test.cjs"},"engines":{"node":">=22"}}

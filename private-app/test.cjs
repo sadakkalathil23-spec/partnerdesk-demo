@@ -1,0 +1,46 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const os=require('node:os');
+const path=require('node:path');
+const {createApp}=require('./server.cjs');
+test('private access, edit/note/trash/restore, persistence, snapshot and backup',async t=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'partnerdesk-test-'));
+ fs.writeFileSync(path.join(directory,'captured-records.json'),JSON.stringify({records:Array.from({length:255},(_,i)=>({'Lead number':'LD'+(i+1),Company:i?'Synthetic '+i:'Test Company',Contact:'Test',Status:'New',Created:'2026-10-01T00:00:00Z',details:{timeline:'Original note'},sourceRecord:{companyName:'Test Company'}})),fullHistories:1,expandedFields:1,currentTotal:1}));
+ let server=createApp({directory});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ let base='http://127.0.0.1:'+server.address().port,cookie='',csrf='';
+ t.after(async()=>{await new Promise(r=>server.close(r));fs.rmSync(directory,{recursive:true,force:true});});
+ async function req(route,method='GET',body,options={}){const headers={'Content-Type':'application/json',Origin:base,Cookie:cookie,'X-CSRF-Token':csrf,...options};return fetch(base+route,{method,headers,body:body===undefined?undefined:JSON.stringify(body),redirect:'manual'});}
+ assert.equal((await req('/api/records')).status,401);
+ assert.equal((await req('/data/captured-records.json')).status,404);
+ assert.equal((await req('/server.cjs')).status,404);
+ assert.equal((await req('/api/setup','POST',{email:'owner@example.test',password:'test-only-password-123'})).status,201);
+ assert.equal((await req('/api/setup','POST',{email:'other@example.test',password:'test-only-password-123'})).status,409);
+ assert.equal((await req('/api/login','POST',{email:'owner@example.test',password:'wrong'})).status,401);
+ let login=await req('/api/login','POST',{email:'owner@example.test',password:'test-only-password-123'});assert.equal(login.status,200);cookie=login.headers.get('set-cookie').split(';')[0];csrf=(await login.json()).csrf;assert.match(login.headers.get('set-cookie'),/HttpOnly/);
+ assert.equal((await req('/api/records/LD1','PATCH',{Company:'Blocked'},{Origin:'https://other.test'})).status,403);
+ assert.equal((await req('/api/records/LD1','PATCH',{Company:'Blocked'},{'X-CSRF-Token':''})).status,403);
+ assert.equal((await req('/api/records/LD1','PATCH',{Company:''})).status,400);
+ assert.equal((await req('/api/records/LD1','PATCH',{Company:'Updated',Phone:'+123',sourceRecord:{companyName:'Wrong'}})).status,200);
+ assert.equal((await req('/api/records/LD1/notes','POST',{text:'New internal note'})).status,201);
+ assert.equal((await req('/api/records/LD1','DELETE')).status,200);
+ assert.equal((await req('/api/records/LD1','PATCH',{Company:'Deleted edit'})).status,409);
+ assert.equal((await req('/api/records/LD1/restore','POST',{})).status,200);
+ let record=(await (await req('/api/records')).json()).records[0];assert.equal(record.Company,'Updated');assert.equal(record.sourceRecord.companyName,'Test Company');assert.equal(record.localNotes[0].body,'New internal note');assert.equal(record.deleted,false);
+ const backup=await(await req('/api/backup')).json();assert.equal(backup.account,undefined);assert.equal(backup.records.length,255);assert(backup.audit.length>=5);
+ await new Promise(r=>server.close(r));server=createApp({directory});await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port;
+ assert.equal((await req('/api/records')).status,401);login=await req('/api/login','POST',{email:'owner@example.test',password:'test-only-password-123'});cookie=login.headers.get('set-cookie').split(';')[0];csrf=(await login.json()).csrf;
+ record=(await(await req('/api/records')).json()).records[0];assert.equal(record.Company,'Updated');assert.equal(record.localNotes.length,1);
+ const full='/private-backend/api';
+ assert.equal((await req(full+'/users','POST',{email:'new@example.test'})).status,403);
+ assert.equal((await req(full+'/auth/change-password','POST',{})).status,403);
+ const leads=await(await req(full+'/leads?pageSize=200')).json();assert.equal(leads.total,268);
+ const lead=leads.rows.find(x=>x.number==='LD1');assert(lead);
+ assert.equal((await req(full+'/leads/'+lead.id+'/notes','GET')).status,405);
+ assert.equal((await req(full+'/leads/'+lead.id+'/notes','POST',{text:'Private full app note',internal:true})).status,200);
+ const timeline=await(await req(full+'/leads/'+lead.id+'/timeline')).json();assert(timeline.events.some(x=>x.text==='Private full app note'));
+ const me=await(await req(full+'/auth/me')).json();assert.equal(me.email,'owner@example.test');assert.equal(me.password,undefined);
+ assert.equal((await req('/copied-records.json')).status,404);
+ assert.equal((await req('/api/logout','POST',{})).status,200);assert.equal((await req('/api/records')).status,401);
+});
+
