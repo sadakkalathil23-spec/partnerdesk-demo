@@ -47,7 +47,7 @@ const WorkOS = (() => {
   const NAV = [
     { label: 'Home', items: [['/home', 'This week'], ['/my-day', 'My Day', LEADV], ['/operations/my-work', 'My Work', OPSV], ['/dashboard', 'Dashboard'], ['/report-builder', 'Report builder', ['LEAD_VIEW_OWN', 'LEAD_VIEW_TEAM', 'LEAD_VIEW_ALL', 'OPS_VIEW_OWN', 'OPS_VIEW_ALL', 'PRESALES_VIEW']], ['/notifications', 'Notifications']] },
     { label: 'Attendance', items: [['/attendance', 'Today', ['ATTENDANCE_SELF']], ['/attendance/history', 'My history', ['ATTENDANCE_SELF']], ['/attendance/team', 'Team', ATT], ['/attendance/exceptions', 'Exceptions', ATT], ['/attendance/reports', 'Reports', ATT], ['/attendance/policy', 'Policy', ['ATTENDANCE_VIEW_ALL']]] },
-    { label: 'Sales', items: [['/leads', 'Leads', LEADV], ['/leads?view=board', 'Pipeline', LEADV], ['/sales-overview', 'Overview', ['SALES_TARGET_VIEW']], ['/unassigned', 'Unassigned', ['LEAD_ASSIGN']], ['/customers', 'Customers', ['PRESALES_VIEW', 'LEAD_VIEW_ALL']], ['/proposals', 'Proposals', ['PRESALES_VIEW', 'LEAD_VIEW_ALL']]] },
+    { label: 'Sales', items: [['/leads', 'Leads', LEADV], ['/leads?view=board', 'Pipeline', LEADV], ['/sales-overview', 'Overview', ['SALES_TARGET_VIEW']], ['/unassigned', 'Unassigned', ['LEAD_ASSIGN']], ['/customers', 'Customers', ['PRESALES_VIEW', 'LEAD_VIEW_ALL']], ['/proposals', 'Proposals', ['PRESALES_VIEW', 'LEAD_VIEW_ALL']], ['/copied-records', 'Copied records', LEADV]] },
     { label: 'Work', items: [['/operations', 'Overview', OPSV], ['/operations/current', 'Current sprint', OPSV], ['/operations/projects', 'Projects', ['OPS_VIEW_ALL']], ['/operations/tasks', 'Tasks', OPSV], ['/operations/general', 'Other work', OPSV], ['/operations/sprints', 'Sprints', OPSV], ['/operations/cycles', 'Cycles', OPSV], ['/operations/team', 'Team', ['OPS_VIEW_ALL']], ['/operations/reports', 'Reports', ['OPS_REPORT_VIEW']], ['/support/contracts', 'Support', ['SUPPORT_VIEW']], ['/support/tickets', 'Tickets', ['SUPPORT_VIEW']]] },
     { label: 'Partners', items: [['/partners', 'Partners', ['PARTNER_VIEW']], ['/conflicts', 'Conflicts', ['PARTNER_CONFLICT_DECIDE']], ['/statement', 'Statements', ['PARTNER_VIEW', 'INCENTIVE_APPROVE']], ['/integrity', 'Integrity checks', ['PARTNER_VIEW']]] },
     { label: 'Money', items: [['/finance/collections', 'Collections', ['PAYMENT_RECORD']], ['/approvals', 'Approvals', ['INCENTIVE_APPROVE']], ['/simulator', 'Simulator', ['INCENTIVE_SIMULATE']], ['/admin/rules', 'Payout rules', ['INCENTIVE_RULE_MANAGE']], ['/admin/what-if', 'Rule what-if', ['INCENTIVE_RULE_MANAGE']]] },
@@ -55,7 +55,7 @@ const WorkOS = (() => {
   ];
   const PARTNER_NAV = [{ label: 'Partner', items: [['/partner', 'Overview']] }, { label: 'My leads', icon: 'Partner', items: [['/partner/leads', 'My leads']] }, { label: 'Submit a lead', icon: 'Partner', items: [['/partner/submit', 'Submit a lead']] }, { label: 'Payout statement', icon: 'Money', items: [['/partner/statement', 'Payout statement']] }];
   // Detail pages that live under a tab.
-  const ALIAS = { '/lead': '/leads', '/proposal': '/proposals', '/sign': '/proposals' };
+  const ALIAS = { '/copied-record': '/copied-records', '/lead': '/leads', '/proposal': '/proposals', '/sign': '/proposals' };
   const baseOf = (p) => p.split('?')[0];
   const visibleNav = () => (user && user.partner ? PARTNER_NAV : NAV).map((g) => Object.assign({}, g, { items: g.items.filter((i) => anyCan(i[2])) })).filter((g) => g.items.length);
   // Which section and tab the current page belongs to.

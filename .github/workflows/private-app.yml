@@ -1,0 +1,23 @@
+name: Detailed private app checks
+on:
+  push:
+    branches: [detailed-private-app]
+  pull_request:
+    paths: ['private-app/**', '.github/workflows/private-app.yml']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm test
+        working-directory: private-app
+      - name: Confirm private records are excluded
+        shell: bash
+        run: |
+          test ! -d private-app/data
+          test ! -f private-app/public/copied-records.json

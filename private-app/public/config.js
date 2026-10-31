@@ -1,0 +1,1 @@
+window.WORKOS_CONFIG = {apiBase:"/private-backend",brand:{name:"PartnerDesk",version:"3.4",demo:false,company:"Private workspace",timezone:"Asia/Kolkata"}};

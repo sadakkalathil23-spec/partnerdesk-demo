@@ -119,7 +119,7 @@
     return rows.filter((r) => !r.deleted || q.includeDeleted === 'true').filter((r) => !text || JSON.stringify(r).toLowerCase().includes(text)).filter((r) => Object.keys(q).every((k) => ['q','page','pageSize','includeDeleted'].includes(k) || q[k] === '' || String(r[k]) === q[k]));
   }
   // ---- leads ----
-  const leadOut = (l) => Object.assign({}, l, { statusKey: keyOf(l.status), latestNote: l.notes.length ? l.notes[l.notes.length - 1] : null });
+  const leadOut = (l) => Object.assign({}, l, { ownerName: (db.users.find(u => u.id === l.assignedTo) || {}).name || 'Unassigned', statusKey: keyOf(l.status), latestNote: l.notes.length ? l.notes[l.notes.length - 1] : null });
   function leadList(q) {
     let rows = db.leads.filter((l) => q.includeDeleted === 'true' || !l.deleted);
     const t = (q.q || '').toLowerCase();
@@ -301,6 +301,29 @@
     if (path === '/auth/login' && j) tokens.set({ accessToken: j.accessToken, refreshToken: j.refreshToken });
     return j;
   }
+
+  async function importCaptured(data) {
+    if (CFG.apiBase) throw new Error('Saved records can only be installed in this local app.');
+    const user = me();
+    if (!user || !user.permissions.includes('LEAD_CREATE')) throw new Error('Sign in with permission to create leads.');
+    if (!data || !Array.isArray(data.records) || data.records.length !== 255 || new Set(data.records.map(r => r['Lead number'])).size !== 255) throw new Error('The saved record set is incomplete.');
+    if (db.capturedImport === '2026-10-31-v1') return { count: 255 };
+    const before = JSON.stringify(db);
+    localStorage.setItem(KEY + '.before-captured-import', before);
+    const imported = data.records.map(r => {
+      const x = r.sourceRecord || {}, status = r.Status === 'Proposal' ? 'Proposal Sent' : r.Status;
+      let owner = db.users.find(u => u.id === x.assignedUserId || u.name === r['Assigned to']);
+      if (!owner && r['Assigned to']) { owner = {id:x.assignedUserId || 'captured-owner-' + r['Assigned to'],name:r['Assigned to'],email:'',status:'Inactive',profile:'Captured owner',permissions:[],isPartner:false}; db.users.push(owner); }
+      const notes = (x.notes || (x.latestNote ? [x.latestNote] : [])).map(n => ({id:n.id,text:n.body || '',internal:n.isInternal !== false,at:n.createdAt,author:(n.author || {}).name || ''})).sort((a,b)=>new Date(a.at)-new Date(b.at));
+      return { id:x.id || 'captured-' + r['Lead number'].replace(/\W/g,'-'), number:r['Lead number'],company:r.Company,contact:r.Contact,email:r.Email,phone:r.Phone,country:r.Country,status,priority:x.priority || 'medium',source:(x.leadSource || {}).name || 'Direct',assignedTo:owner ? owner.id : '',estimatedValue:Number(x.estimatedValue || 0)/100,currency:x.currency || 'INR',nextAction:null,flags:[],leadType:x.leadType || 'B2B',service:r.Service || '',serviceId:x.serviceId || '',partnerId:'',createdAt:x.createdAt || r.Created,updatedAt:x.updatedAt || x.createdAt || r.Created,notes,hasNewNote:false,deleted:false,convertedAt:x.convertedAt || null,activities:(x.activities || (x.lastActivity ? [x.lastActivity] : [])).map(a=>({id:a.id,description:a.description || a.activityType || '',at:a.createdAt})),capturedNumber:r['Lead number'],captureFullHistory:!!r.fullHistory };
+    });
+    const capturedIds = new Set(imported.map(l=>l.id)), numbers = new Set(imported.map(l=>l.number));
+    db.leads = imported.concat(db.leads.filter(l=>!capturedIds.has(l.id) && !numbers.has(l.number)));
+    db.capturedImport = '2026-10-31-v1';
+    try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { db=JSON.parse(before); throw new Error('Storage is full; no leads were imported.'); }
+    return { count: imported.length };
+  }
+
   const call = CFG.apiBase ? real : mock;
-  window.api = { mode: CFG.apiBase ? 'live' : 'mock', STATUSES, FOLLOWUP_REQUIRED, CONVERSION_READY: ['qualified', 'initial_discussion', 'proposal_sent', 'negotiation'], ALL, get: (p) => call('GET', p), post: (p, b) => call('POST', p, b), patch: (p, b) => call('PATCH', p, b), put: (p, b) => call('PUT', p, b), del: (p, b) => call('DELETE', p, b), demoLogin: CFG.apiBase ? null : (email) => call('POST', '/auth/login', { email, password: 'WorkOS-demo-12345' }), reset: () => { db = seed(); save(); } };
+  window.api = { importCaptured, mode: CFG.apiBase ? 'live' : 'mock', STATUSES, FOLLOWUP_REQUIRED, CONVERSION_READY: ['qualified', 'initial_discussion', 'proposal_sent', 'negotiation'], ALL, get: (p) => call('GET', p), post: (p, b) => call('POST', p, b), patch: (p, b) => call('PATCH', p, b), put: (p, b) => call('PUT', p, b), del: (p, b) => call('DELETE', p, b), demoLogin: CFG.apiBase ? null : (email) => call('POST', '/auth/login', { email, password: 'WorkOS-demo-12345' }), reset: () => { db = seed(); save(); } };
 })();
